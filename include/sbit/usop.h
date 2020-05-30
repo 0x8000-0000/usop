@@ -84,7 +84,7 @@ struct WrapperHeader
          /*
           * ... retrieve the pointer to the deleter,
           */
-         auto  deleterFunc = *reinterpret_cast<DeleterFunc*>(segmentImpl);
+         auto deleterFunc = *reinterpret_cast<DeleterFunc*>(segmentImpl);
 
          /*
           * ... call the deleter to release the object
@@ -393,14 +393,18 @@ public:
    class SegmentImpl
    {
    public:
-      SegmentImpl()
+      SegmentImpl() = default;
+
+      ~SegmentImpl()
       {
-         /* This is constructed in uninitialized form and then incrementally
-          * filled-in. We still need a constructor for that but it is never
-          * actually called.
-          */
-         assert(false);
+         assert(isEmpty());
       }
+
+      SegmentImpl(const SegmentImpl& other) = delete;
+      SegmentImpl(SegmentImpl&& other)      = delete;
+
+      SegmentImpl& operator=(const SegmentImpl& other) = delete;
+      SegmentImpl& operator=(SegmentImpl&& other) = delete;
 
       void initializeEntry(uint32_t pos)
       {
@@ -418,11 +422,6 @@ public:
          m_highestUsedEntry = 0;
 
          m_deleterFunc = reinterpret_cast<WrapperHeader::DeleterFunc>(&SegmentImpl::destroyObject);
-      }
-
-      ~SegmentImpl()
-      {
-         assert(isEmpty());
       }
 
       typename Pointer::ObjectWrapper* allocate() noexcept
@@ -461,14 +460,6 @@ public:
       {
          return (0 == m_used);
       }
-
-      SegmentImpl(const SegmentImpl& other) = delete;
-
-      SegmentImpl(SegmentImpl&& other) = delete;
-
-      SegmentImpl& operator=(const SegmentImpl& other) = delete;
-
-      SegmentImpl& operator=(SegmentImpl&& other) = delete;
 
       template <class... Args>
       typename Pointer::ObjectWrapper* create(Args&&... args) noexcept
@@ -544,26 +535,29 @@ public:
          segment->release(object);
       }
 
-      WrapperHeader::DeleterFunc m_deleterFunc;
+      WrapperHeader::DeleterFunc m_deleterFunc = nullptr;
 
       std::array<typename Pointer::ObjectWrapper, Size> m_elements;
-
-
-      // m_elements is the first object in SegmentImpl
-#ifdef __GNUC__
-#if __GNUC__ > 9
-      static_assert(offsetof(SegmentImpl, m_deleterFunc) == 0,
-                    "m_deleterFunc is not the first sub-object of SegmentImpl");
-      static_assert(offsetof(SegmentImpl, m_elements) == sizeof(WrapperHeader::DeleterFunc),
-                    "m_elements is not the second sub-object of SegmentImpl");
-#endif
-#endif
 
       uint32_t m_freeHead         = 0;
       uint32_t m_used             = 0;
       uint32_t m_highestUsedEntry = 0;
 
       std::allocator<T> m_globalAllocator;
+
+#if 0
+      /*
+       * can't write this here because the template is incomplete at this point
+       * can't write it outside because m_elements and m_deleterFunc are private
+       */
+
+      // m_deleterFunc is the second object in SegmentImpl
+      static_assert(offsetof(SegmentImpl, m_deleterFunc) == 0,
+                    "m_deleterFunc is not the first sub-object of SegmentImpl");
+      // m_elements is the second object in SegmentImpl
+      static_assert(offsetof(SegmentImpl, m_elements) == sizeof(WrapperHeader::DeleterFunc),
+                    "m_elements is not the second sub-object of SegmentImpl");
+#endif
    };
 
    /** @brief Internal implementation detail
@@ -583,6 +577,12 @@ public:
          std::allocator<SegmentImpl> globalAllocator;
          std::allocator_traits<std::allocator<SegmentImpl>>::deallocate(globalAllocator, m_segment, 1);
       }
+
+      Segment(const Segment& other) = delete;
+      Segment(Segment&& other)      = delete;
+
+      Segment& operator=(const Segment& other) = delete;
+      Segment& operator=(Segment&& other) = delete;
 
       bool isEmpty()
       {
@@ -653,7 +653,7 @@ public:
       return sbit::PooledPointer<T>{ptr};
    }
 
-   /**
+   /** Scans through the used segments and moves the empty ones to the empty list
     *
     */
    void compactFast()
@@ -752,14 +752,11 @@ private:
       size_t spillIntoNextSegment     = 0;
       size_t allocateInCurrentSegment = 0;
 
+#if 0
+      // TODO(florin) measure allocations that are in successive slots
       size_t inOrderAllocation    = 0;
       size_t outOfOrderAllocation = 0;
-
-      /* Measuring this require tracking the actual element release, to check if
-       * releases are interspersed with allocations. However, releases are
-       * distributed, per segment - and not tracked centrally.
-       */
-      // size_t consecutiveAllocationsSpanningSegments = 0;
+#endif
 
    } m_stats;
 };
