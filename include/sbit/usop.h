@@ -120,8 +120,8 @@ public:
    {
       if (header != nullptr)
       {
-         m_wrapper = header;
-         m_wrapper->addRef();
+         m_pointer = reinterpret_cast<T*>(std::next(header, 1));
+         header->addRef();
       }
    }
 
@@ -129,32 +129,34 @@ public:
    {
       if (wrapper != nullptr)
       {
-         m_wrapper = &wrapper->header;
-         m_wrapper->addRef();
+         m_pointer = &wrapper->t;
+         wrapper->header.addRef();
       }
    }
 
-   PooledPointer(const PooledPointer& other) noexcept : m_wrapper{other.m_wrapper}
+   PooledPointer(const PooledPointer& other) noexcept : m_pointer{other.m_pointer}
    {
-      if (m_wrapper != nullptr)
+      if (m_pointer != nullptr)
       {
-         m_wrapper->addRef();
+         getWrapper()->addRef();
       }
    }
 
    template <class U, class = typename std::enable_if<std::is_base_of<T, U>::value>::type>
-   PooledPointer(const PooledPointer<U>& other) noexcept : m_wrapper{other.m_wrapper}
+   PooledPointer(const PooledPointer<U>& other) noexcept : m_pointer{other.m_pointer}
    {
-      if (m_wrapper != nullptr)
+      if (m_pointer != nullptr)
       {
-         m_wrapper->addRef();
+         getWrapper()->addRef();
       }
    }
 
    template <class U, class = typename std::enable_if<std::is_base_of<T, U>::value>::type>
    PooledPointer(PooledPointer<U>&& other) noexcept
    {
-      std::swap(m_wrapper, other.m_wrapper);
+      void* temp      = reinterpret_cast<void*>(other.m_pointer);
+      other.m_pointer = reinterpret_cast<U*>(m_pointer);
+      m_pointer       = reinterpret_cast<T*>(temp);
    }
 
    PooledPointer& operator=(const PooledPointer& other) noexcept
@@ -163,10 +165,10 @@ public:
       {
          release();
 
-         m_wrapper = other.m_wrapper;
-         if (m_wrapper != nullptr)
+         m_pointer = other.m_pointer;
+         if (m_pointer != nullptr)
          {
-            m_wrapper->addRef();
+            getWrapper()->addRef();
          }
       }
       return *this;
@@ -179,10 +181,10 @@ public:
       {
          release();
 
-         m_wrapper = other.m_wrapper;
-         if (m_wrapper != nullptr)
+         m_pointer = other.m_pointer;
+         if (m_pointer != nullptr)
          {
-            m_wrapper->addRef();
+            getWrapper()->addRef();
          }
       }
       return *this;
@@ -193,62 +195,45 @@ public:
    {
       if (this != &other)
       {
-         std::swap(m_wrapper, other.m_wrapper);
+         void* temp      = reinterpret_cast<void*>(other.m_pointer);
+         other.m_pointer = reinterpret_cast<U*>(m_pointer);
+         m_pointer       = reinterpret_cast<T*>(temp);
       }
       return *this;
    }
 
    T* operator->() const
    {
-      if (m_wrapper != nullptr)
-      {
-         assert(m_wrapper->busy);
-         assert(m_wrapper->referenceCount > 0);
-         return reinterpret_cast<T*>(std::next(m_wrapper, 1));
-      }
-      assert(false);
-      return nullptr;
+      assert(m_pointer != nullptr);
+      assertValid();
+      return m_pointer;
    }
 
    explicit operator bool() const
    {
-      return m_wrapper != nullptr;
+      return m_pointer != nullptr;
    }
 
    T& operator*() const
    {
-      assert(m_wrapper != nullptr);
-      assert(m_wrapper->busy);
-      assert(m_wrapper->referenceCount > 0);
-      return *operator->();
-   }
-
-   T& operator*()
-   {
-      assert(m_wrapper != nullptr);
-      assert(m_wrapper->busy);
-      assert(m_wrapper->referenceCount > 0);
-      return *operator->();
+      assert(m_pointer != nullptr);
+      assertValid();
+      return *m_pointer;
    }
 
    T* get() const
    {
-      if (m_wrapper == nullptr)
-      {
-         return nullptr;
-      }
-
-      return operator->();
+      return m_pointer;
    }
 
    bool operator==(const PooledPointer& other) const noexcept
    {
-      if (m_wrapper == other.m_wrapper)
+      if (m_pointer == other.m_pointer)
       {
          return true;
       }
 
-      if (m_wrapper == nullptr)
+      if (m_pointer == nullptr)
       {
          return false;
       }
@@ -259,23 +244,38 @@ public:
    template <typename U>
    PooledPointer<U> castTo() const noexcept
    {
-      return PooledPointer<U>(m_wrapper);
+      return PooledPointer<U>(getWrapper());
    }
 
 private:
    template <typename U>
    friend class PooledPointer;
 
+   WrapperHeader* getWrapper() const
+   {
+      return std::prev(reinterpret_cast<WrapperHeader*>(m_pointer), 1);
+   }
+
+   void assertValid() const
+   {
+#ifndef NDEBUG
+      auto* wrapper = getWrapper();
+      assert(wrapper->busy);
+      assert(wrapper->referenceCount > 0);
+#endif
+   }
+
    void release() noexcept
    {
-      if (m_wrapper != nullptr)
+      if (m_pointer != nullptr)
       {
-         assert(m_wrapper->busy);
-         m_wrapper->release();
+         auto* wrapper = getWrapper();
+         assert(wrapper->busy);
+         wrapper->release();
       }
    }
 
-   WrapperHeader* m_wrapper = nullptr;
+   T* m_pointer = nullptr;
 };
 
 /* @brief Cast between pointer types, unsafely
