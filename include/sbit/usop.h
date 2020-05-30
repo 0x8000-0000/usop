@@ -438,19 +438,20 @@ public:
 
          assert(m_freeHead <= m_highestUsedEntry);
 
+         auto& element = getElement(m_freeHead);
+
          if (m_freeHead == m_highestUsedEntry)
          {
-            initializeEntry(&m_elements[m_freeHead], m_freeHead);
+            initializeEntry(&element, m_freeHead);
             m_highestUsedEntry++;
             assert(m_capacity >= m_highestUsedEntry);
          }
 
-         typename Pointer::ObjectWrapper* ptr = std::next(m_elements.data(), m_freeHead);
-         assert(0 == ptr->header.busy);
-         m_freeHead                 = ptr->header.referenceCount;
-         ptr->header.referenceCount = 0;
-         ptr->header.busy           = 1;
-         return ptr;
+         assert(0 == element.header.busy);
+         m_freeHead                    = element.header.referenceCount;
+         element.header.referenceCount = 0;
+         element.header.busy           = 1;
+         return &element;
       }
 
       bool isFull() const noexcept
@@ -486,15 +487,17 @@ public:
          assert(m_used > 0);
          m_used--;
 
-         assert(m_elements[offset].header.busy);
-         assert(0 == m_elements[offset].header.referenceCount);
+         auto& element = getElement(offset);
 
-         std::allocator_traits<std::allocator<T>>::destroy(m_globalAllocator, &m_elements[offset].t);
+         assert(element.header.busy);
+         assert(0 == element.header.referenceCount);
+
+         std::allocator_traits<std::allocator<T>>::destroy(m_globalAllocator, &element.t);
 #ifdef USOP_PARANOID_FILL
          memset(static_cast<void*>(&m_elements[offset].t), 0xab, sizeof(T));
 #endif
 
-         m_elements[offset].header.busy = 0;
+         element.header.busy = 0;
          if (m_used == 0)
          {
             resetFreeList();
@@ -502,8 +505,8 @@ public:
          else
          {
             // add to free list
-            m_elements[offset].header.referenceCount = m_freeHead;
-            m_freeHead                               = offset;
+            element.header.referenceCount = m_freeHead;
+            m_freeHead                    = offset;
          }
       }
 
@@ -511,7 +514,7 @@ public:
       {
          assert(0 == wrapper->header.referenceCount);
 
-         const auto signedOffset = std::distance(m_elements.data(), wrapper);
+         const auto signedOffset = std::distance(&getElement(0), wrapper);
          assert(signedOffset >= 0);
          assert(signedOffset < std::numeric_limits<uint32_t>::max());
          const auto offset = static_cast<uint32_t>(signedOffset);
@@ -529,6 +532,12 @@ public:
       }
 
    private:
+      typename Pointer::ObjectWrapper& getElement(uint32_t pos)
+      {
+         assert(pos < m_capacity);
+         return m_hiddenElements[pos];
+      }
+
       static void destroyObject(SegmentImpl* segment, typename Pointer::ObjectWrapper* object)
 #if defined(__clang__)
          __attribute__((no_sanitize("undefined")))
@@ -546,7 +555,7 @@ public:
 
       std::allocator<T> m_globalAllocator;
 
-      std::array<typename Pointer::ObjectWrapper, Size> m_elements;
+      std::array<typename Pointer::ObjectWrapper, Size> m_hiddenElements;
 
 #if 0
       /*
