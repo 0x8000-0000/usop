@@ -406,20 +406,22 @@ public:
       SegmentImpl& operator=(const SegmentImpl& other) = delete;
       SegmentImpl& operator=(SegmentImpl&& other) = delete;
 
-      void initializeEntry(uint32_t pos)
+      void initializeEntry(typename Pointer::ObjectWrapper* element, uint32_t pos)
       {
-         assert(static_cast<size_t>(pos) < Size);
-
-         m_elements[pos].header.busy   = 0;
-         m_elements[pos].header.offset = sizeof(m_deleterFunc) + pos * (sizeof(typename Pointer::ObjectWrapper));
-         m_elements[pos].header.referenceCount = pos + 1;
+         element->header.busy    = 0;
+         const auto signedOffset = std::distance(reinterpret_cast<char*>(this), reinterpret_cast<char*>(element));
+         assert(signedOffset >= 0);
+         assert(signedOffset < std::numeric_limits<uint32_t>::max());
+         element->header.offset         = static_cast<uint32_t>(signedOffset);
+         element->header.referenceCount = pos + 1;
       }
 
-      void initialize()
+      void initialize(uint32_t capacity)
       {
          m_freeHead         = 0;
          m_used             = 0;
          m_highestUsedEntry = 0;
+         m_capacity         = capacity;
 
          m_deleterFunc = reinterpret_cast<WrapperHeader::DeleterFunc>(&SegmentImpl::destroyObject);
       }
@@ -431,16 +433,16 @@ public:
             return nullptr;
          }
 
-         assert(Size > m_used);
+         assert(m_capacity > m_used);
          m_used++;
 
          assert(m_freeHead <= m_highestUsedEntry);
 
          if (m_freeHead == m_highestUsedEntry)
          {
-            initializeEntry(m_freeHead);
+            initializeEntry(&m_elements[m_freeHead], m_freeHead);
             m_highestUsedEntry++;
-            assert(Size >= m_highestUsedEntry);
+            assert(m_capacity >= m_highestUsedEntry);
          }
 
          typename Pointer::ObjectWrapper* ptr = std::next(m_elements.data(), m_freeHead);
@@ -453,7 +455,7 @@ public:
 
       bool isFull() const noexcept
       {
-         return (Size == m_used);
+         return (m_capacity == m_used);
       }
 
       bool isEmpty() const noexcept
@@ -513,7 +515,7 @@ public:
          assert(signedOffset >= 0);
          assert(signedOffset < std::numeric_limits<uint32_t>::max());
          const auto offset = static_cast<uint32_t>(signedOffset);
-         assert(offset < Size);
+         assert(offset < m_capacity);
 
          release(offset);
       }
@@ -537,13 +539,14 @@ public:
 
       WrapperHeader::DeleterFunc m_deleterFunc = nullptr;
 
-      std::array<typename Pointer::ObjectWrapper, Size> m_elements;
-
       uint32_t m_freeHead         = 0;
       uint32_t m_used             = 0;
       uint32_t m_highestUsedEntry = 0;
+      uint32_t m_capacity         = 0;
 
       std::allocator<T> m_globalAllocator;
+
+      std::array<typename Pointer::ObjectWrapper, Size> m_elements;
 
 #if 0
       /*
@@ -551,12 +554,9 @@ public:
        * can't write it outside because m_elements and m_deleterFunc are private
        */
 
-      // m_deleterFunc is the second object in SegmentImpl
+      // m_deleterFunc is the first object in SegmentImpl
       static_assert(offsetof(SegmentImpl, m_deleterFunc) == 0,
                     "m_deleterFunc is not the first sub-object of SegmentImpl");
-      // m_elements is the second object in SegmentImpl
-      static_assert(offsetof(SegmentImpl, m_elements) == sizeof(WrapperHeader::DeleterFunc),
-                    "m_elements is not the second sub-object of SegmentImpl");
 #endif
    };
 
@@ -569,7 +569,7 @@ public:
       {
          std::allocator<SegmentImpl> globalAllocator;
          m_segment = std::allocator_traits<std::allocator<SegmentImpl>>::allocate(globalAllocator, 1);
-         m_segment->initialize();
+         m_segment->initialize(Size);
       }
 
       ~Segment()
