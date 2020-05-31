@@ -13,7 +13,7 @@ TEST(TestPool, AllocateOne)
    ASSERT_EQ(0, Point::references);
    
    {
-      sbit::UnsynchronizedObjectPool<Point, 32> pool;
+      sbit::UnsynchronizedObjectPool<Point> pool{/* size = */ 32};
 
       auto ptr = pool.create(3, 4);
       ASSERT_EQ(3, ptr->x);
@@ -29,7 +29,7 @@ TEST(TestPool, AllocateOneWithStats)
    ASSERT_EQ(0, Point::references);
 
    {
-      sbit::UnsynchronizedObjectPool<Point, 32> pool;
+      sbit::UnsynchronizedObjectPool<Point> pool{32};
 
       auto ptr = pool.create(3, 4);
       ASSERT_EQ(3, ptr->x);
@@ -45,8 +45,8 @@ TEST(TestPool, AllocateFourSegments)
    ASSERT_EQ(0, Point::references);
 
    {
-      using Pool = sbit::UnsynchronizedObjectPool<Point, 32>;
-      Pool pool;
+      using Pool = sbit::UnsynchronizedObjectPool<Point>;
+      Pool pool{/* size = */ 32};
 
       std::vector<Pool::Pointer> allocations;
 
@@ -80,8 +80,8 @@ TEST(TestPool, AllocateTwoSegments)
    ASSERT_EQ(0, Point::references);
 
    {
-      using Pool = sbit::UnsynchronizedObjectPool<Point, 32>;
-      Pool pool;
+      using Pool = sbit::UnsynchronizedObjectPool<Point>;
+      Pool pool{/* size = */ 32};
 
       std::vector<Pool::Pointer> allocations;
 
@@ -109,8 +109,8 @@ TEST(TestPool, MaintainLiveness)
    ASSERT_EQ(0, Point::references);
 
    {
-      using Pool = sbit::UnsynchronizedObjectPool<Point, 32>;
-      Pool pool;
+      using Pool = sbit::UnsynchronizedObjectPool<Point>;
+      Pool pool{/* size = */ 32};
 
       {
          Pool::Pointer ptr;
@@ -130,8 +130,8 @@ TEST(TestPool, PseudorandomTest)
    ASSERT_EQ(0, Point::references);
 
    {
-      using Pool = sbit::UnsynchronizedObjectPool<Point, 64>;
-      Pool pool;
+      using Pool = sbit::UnsynchronizedObjectPool<Point>;
+      Pool pool{/* size = */ 64};
 
       std::uniform_int_distribution<size_t> distribution(1, 4096);
       std::random_device rd;

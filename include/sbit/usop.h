@@ -380,9 +380,8 @@ inline PooledPointer<T> static_pointer_cast(const PooledPointer<U>& other) noexc
  *
  *
  * @tparam T is the type of the objects managed by the pool
- * @tparam Size is the size of the segment
  */
-template <typename T, size_t Size>
+template <typename T>
 class UnsynchronizedObjectPool
 {
 public:
@@ -462,6 +461,11 @@ public:
       bool isEmpty() const noexcept
       {
          return (0 == m_used);
+      }
+
+      uint32_t getSize() const noexcept
+      {
+         return m_capacity;
       }
 
       template <class... Args>
@@ -576,7 +580,7 @@ public:
    class Segment
    {
    public:
-      Segment()
+      Segment(uint32_t size)
       {
          const auto segmentImplOverhead = (sizeof(SegmentImpl) + sizeof(typename Pointer::ObjectWrapper) - 1) /
                                           sizeof(typename Pointer::ObjectWrapper);
@@ -584,8 +588,8 @@ public:
          std::allocator<typename Pointer::ObjectWrapper> globalAllocator;
          m_segment = reinterpret_cast<SegmentImpl*>(
             std::allocator_traits<std::allocator<typename Pointer::ObjectWrapper>>::allocate(
-               globalAllocator, Size + segmentImplOverhead));
-         m_segment->initialize(Size);
+               globalAllocator, size + segmentImplOverhead));
+         m_segment->initialize(size);
       }
 
       ~Segment()
@@ -597,7 +601,7 @@ public:
          std::allocator_traits<std::allocator<typename Pointer::ObjectWrapper>>::deallocate(
             globalAllocator,
             reinterpret_cast<typename Pointer::ObjectWrapper*>(m_segment),
-            Size + segmentImplOverhead);
+            m_segment->getSize() + segmentImplOverhead);
       }
 
       Segment(const Segment& other) = delete;
@@ -638,9 +642,9 @@ public:
 
    /** Constructor
     */
-   UnsynchronizedObjectPool()
+   UnsynchronizedObjectPool(uint32_t size) : m_size{size}
    {
-      m_segments.emplace_back();
+      m_segments.emplace_back(m_size);
       m_lastUsedSegment = m_segments.begin();
    }
 
@@ -740,7 +744,7 @@ private:
 
             if (m_emptySegments.empty())
             {
-               m_lastUsedSegment = m_segments.emplace(/* position = */ startSegment);
+               m_lastUsedSegment = m_segments.emplace(/* position = */ startSegment, m_size);
                m_stats.maxAllocatedSegments++;
             }
             else
@@ -757,6 +761,8 @@ private:
       assert(!m_lastUsedSegment->isFull());
       return *m_lastUsedSegment;
    }
+
+   uint32_t m_size;
 
    std::list<Segment> m_segments;
    std::list<Segment> m_emptySegments;

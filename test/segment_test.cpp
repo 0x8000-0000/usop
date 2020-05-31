@@ -8,7 +8,7 @@ using usop_test::Point;
 
 TEST(TestPoolSegment, AllocateOne)
 {
-   sbit::UnsynchronizedObjectPool<Point, 32>::Segment segment;
+   sbit::UnsynchronizedObjectPool<Point>::Segment segment{/* size = */ 32};
 
    auto* ptr = segment.create(3, 4);
    ASSERT_EQ(3, ptr->t.x);
@@ -18,7 +18,7 @@ TEST(TestPoolSegment, AllocateOne)
 
 TEST(TestPoolSegment, AllocateTwoReleaseNested)
 {
-   sbit::UnsynchronizedObjectPool<Point, 32>::Segment segment;
+   sbit::UnsynchronizedObjectPool<Point>::Segment segment{/* size = */ 32};
 
    auto* ptr = segment.create(3, 4);
    ASSERT_EQ(3, ptr->t.x);
@@ -34,7 +34,7 @@ TEST(TestPoolSegment, AllocateTwoReleaseNested)
 
 TEST(TestPoolSegment, AllocateTwoReleaseInOrder)
 {
-   sbit::UnsynchronizedObjectPool<Point, 32>::Segment segment;
+   sbit::UnsynchronizedObjectPool<Point>::Segment segment{/* size = */ 32};
 
    auto* ptr = segment.create(3, 4);
    ASSERT_EQ(3, ptr->t.x);

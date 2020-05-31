@@ -12,9 +12,9 @@ using usop_test::Square;
 namespace
 {
 
-using FigurePool = sbit::UnsynchronizedObjectPool<Figure, 32>;
-using CirclePool = sbit::UnsynchronizedObjectPool<Circle, 32>;
-using SquarePool = sbit::UnsynchronizedObjectPool<Square, 32>;
+using FigurePool = sbit::UnsynchronizedObjectPool<Figure>;
+using CirclePool = sbit::UnsynchronizedObjectPool<Circle>;
+using SquarePool = sbit::UnsynchronizedObjectPool<Square>;
 
 class PolymorphicTest : public ::testing::Test
 {
@@ -29,8 +29,8 @@ protected:
       ASSERT_EQ(0, Point::references);
    }
 
-   CirclePool circlePool;
-   SquarePool squarePool;
+   CirclePool circlePool{32};
+   SquarePool squarePool{32};
 };
 
 std::vector<sbit::PooledPointer<Figure>> makeFigures(CirclePool& circlePool, SquarePool& squarePool)

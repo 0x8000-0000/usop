@@ -13,9 +13,9 @@ using usop_test::Square;
 namespace
 {
 
-using FigurePool = sbit::UnsynchronizedObjectPool<Figure, 32>;
-using CirclePool = sbit::UnsynchronizedObjectPool<Circle, 32>;
-using SquarePool = sbit::UnsynchronizedObjectPool<Square, 32>;
+using FigurePool = sbit::UnsynchronizedObjectPool<Figure>;
+using CirclePool = sbit::UnsynchronizedObjectPool<Circle>;
+using SquarePool = sbit::UnsynchronizedObjectPool<Square>;
 
 } // anonymous namespace
 
@@ -25,8 +25,7 @@ TEST(ConversionTest, Conversions)
 {
    ASSERT_EQ(0, Point::references);
    {
-
-      CirclePool circlePool;
+      CirclePool circlePool{/* size = */ 32};
       auto       circleOne = circlePool.create(Point{3, 4}, /* radius = */ 5);
 
       std::vector<sbit::PooledPointer<Figure>> figures;
@@ -46,7 +45,7 @@ TEST(ConversionTest, CastDoesNotLeak)
    ASSERT_EQ(0, Point::references);
 
    {
-      CirclePool pool;
+      CirclePool pool{/* size = */ 32};
 
       {
          auto circleOne = pool.create(Point{3, 4}, /* radius = */ 5);
