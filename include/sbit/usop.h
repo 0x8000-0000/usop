@@ -438,20 +438,20 @@ public:
 
          assert(m_freeHead <= m_highestUsedEntry);
 
-         auto& element = getElement(m_freeHead);
+         auto* element = getElement(m_freeHead);
 
          if (m_freeHead == m_highestUsedEntry)
          {
-            initializeEntry(&element, m_freeHead);
+            initializeEntry(element, m_freeHead);
             m_highestUsedEntry++;
             assert(m_capacity >= m_highestUsedEntry);
          }
 
-         assert(0 == element.header.busy);
-         m_freeHead                    = element.header.referenceCount;
-         element.header.referenceCount = 0;
-         element.header.busy           = 1;
-         return &element;
+         assert(0 == element->header.busy);
+         m_freeHead                     = element->header.referenceCount;
+         element->header.referenceCount = 0;
+         element->header.busy           = 1;
+         return element;
       }
 
       bool isFull() const noexcept
@@ -478,7 +478,8 @@ public:
 #ifdef USOP_PARANOID_FILL
          memset(static_cast<void*>(&ptr->t), 0, sizeof(T));
 #endif
-         std::allocator_traits<std::allocator<T>>::construct(m_globalAllocator, &ptr->t, std::forward<Args>(args)...);
+         std::allocator<T> globalAllocator;
+         std::allocator_traits<std::allocator<T>>::construct(globalAllocator, &ptr->t, std::forward<Args>(args)...);
          return ptr;
       }
 
@@ -487,17 +488,18 @@ public:
          assert(m_used > 0);
          m_used--;
 
-         auto& element = getElement(offset);
+         auto* element = getElement(offset);
 
-         assert(element.header.busy);
-         assert(0 == element.header.referenceCount);
+         assert(element->header.busy);
+         assert(0 == element->header.referenceCount);
 
-         std::allocator_traits<std::allocator<T>>::destroy(m_globalAllocator, &element.t);
+         std::allocator<T> globalAllocator;
+         std::allocator_traits<std::allocator<T>>::destroy(globalAllocator, &element->t);
 #ifdef USOP_PARANOID_FILL
          memset(static_cast<void*>(&m_elements[offset].t), 0xab, sizeof(T));
 #endif
 
-         element.header.busy = 0;
+         element->header.busy = 0;
          if (m_used == 0)
          {
             resetFreeList();
@@ -505,8 +507,8 @@ public:
          else
          {
             // add to free list
-            element.header.referenceCount = m_freeHead;
-            m_freeHead                    = offset;
+            element->header.referenceCount = m_freeHead;
+            m_freeHead                     = offset;
          }
       }
 
@@ -514,7 +516,7 @@ public:
       {
          assert(0 == wrapper->header.referenceCount);
 
-         const auto signedOffset = std::distance(&getElement(0), wrapper);
+         const auto signedOffset = std::distance(getElement(0), wrapper);
          assert(signedOffset >= 0);
          assert(signedOffset < std::numeric_limits<uint32_t>::max());
          const auto offset = static_cast<uint32_t>(signedOffset);
@@ -532,10 +534,14 @@ public:
       }
 
    private:
-      typename Pointer::ObjectWrapper& getElement(uint32_t pos)
+      typename Pointer::ObjectWrapper* getElement(uint32_t pos)
       {
+         const auto segmentImplOverhead = (sizeof(SegmentImpl) + sizeof(typename Pointer::ObjectWrapper) - 1) /
+                                          sizeof(typename Pointer::ObjectWrapper);
          assert(pos < m_capacity);
-         return m_hiddenElements[pos];
+
+         typename Pointer::ObjectWrapper* elements = reinterpret_cast<typename Pointer::ObjectWrapper*>(this);
+         return std::next(elements, segmentImplOverhead + pos);
       }
 
       static void destroyObject(SegmentImpl* segment, typename Pointer::ObjectWrapper* object)
@@ -552,10 +558,6 @@ public:
       uint32_t m_used             = 0;
       uint32_t m_highestUsedEntry = 0;
       uint32_t m_capacity         = 0;
-
-      std::allocator<T> m_globalAllocator;
-
-      std::array<typename Pointer::ObjectWrapper, Size> m_hiddenElements;
 
 #if 0
       /*
@@ -576,15 +578,26 @@ public:
    public:
       Segment()
       {
-         std::allocator<SegmentImpl> globalAllocator;
-         m_segment = std::allocator_traits<std::allocator<SegmentImpl>>::allocate(globalAllocator, 1);
+         const auto segmentImplOverhead = (sizeof(SegmentImpl) + sizeof(typename Pointer::ObjectWrapper) - 1) /
+                                          sizeof(typename Pointer::ObjectWrapper);
+
+         std::allocator<typename Pointer::ObjectWrapper> globalAllocator;
+         m_segment = reinterpret_cast<SegmentImpl*>(
+            std::allocator_traits<std::allocator<typename Pointer::ObjectWrapper>>::allocate(
+               globalAllocator, Size + segmentImplOverhead));
          m_segment->initialize(Size);
       }
 
       ~Segment()
       {
-         std::allocator<SegmentImpl> globalAllocator;
-         std::allocator_traits<std::allocator<SegmentImpl>>::deallocate(globalAllocator, m_segment, 1);
+         const auto segmentImplOverhead = (sizeof(SegmentImpl) + sizeof(typename Pointer::ObjectWrapper) - 1) /
+                                          sizeof(typename Pointer::ObjectWrapper);
+
+         std::allocator<typename Pointer::ObjectWrapper> globalAllocator;
+         std::allocator_traits<std::allocator<typename Pointer::ObjectWrapper>>::deallocate(
+            globalAllocator,
+            reinterpret_cast<typename Pointer::ObjectWrapper*>(m_segment),
+            Size + segmentImplOverhead);
       }
 
       Segment(const Segment& other) = delete;
